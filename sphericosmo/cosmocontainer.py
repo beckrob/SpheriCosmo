@@ -1,3 +1,9 @@
+import numpy as np
+import camb
+from scipy import integrate
+from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter1d
+from sphericosmo.constants import *
 
 def growthFunc(zz,HH):
     # this is the factor to convert the scale-less analytical growth factor to real
@@ -44,6 +50,7 @@ class CosmoContainer:
         
         self.H=HVect
         
+        h=H0/100.0
         self.H0_SI = H0*1000/MpcInMeters
         self.omega_m = omega_m
 
@@ -126,3 +133,4 @@ class CosmoContainer:
                               cambResults.get_params().H0, 
                               cambResults.get_params().omegab+cambResults.get_params().omegac,
                               referenceRedshift, pointsToCMB)
+

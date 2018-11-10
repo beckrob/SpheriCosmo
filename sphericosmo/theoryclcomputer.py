@@ -1,3 +1,8 @@
+import numpy as np
+from sphericosmo.sphericalpower import *
+from sphericosmo.cosmocontainer import *
+from sphericosmo.pitau import *
+from sphericosmo.clcontainer import *
 
 class TheoryClComputer:
     
@@ -66,4 +71,4 @@ class TheoryClComputer:
                            aClCovar=None,
                            aFSky=aFSky, 
                            aIsAutoCorr=(aCorrType[0]==aCorrType[1]))
-   
+

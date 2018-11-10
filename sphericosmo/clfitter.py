@@ -1,3 +1,10 @@
+import numpy as np
+from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
+from functools import partial
+import inspect
+import copy
+from sphericosmo.clcontainer import *
 
 class ClFitter:
 
@@ -86,4 +93,4 @@ class ClFitter:
         else:
             
             return ClFiltered
-    
+

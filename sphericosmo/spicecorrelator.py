@@ -1,7 +1,20 @@
+import numpy as np
+import math
+import healpy as hp
+import ispice
+import pandas
+from astropy.table import Table
+from astropy.io import fits
+import os
+import os.path
+from sphericosmo.clcontainer import *
+from sphericosmo.mapcontainer import *
+from sphericosmo.redshiftcounthist import *
+
 
 def defaultApodization(fSky, multiplier=1.0):
 
-    return sqrt(41252.96*fSky)*multiplier
+    return math.sqrt(41252.96*fSky)*multiplier
 
 class SpiceCorrelator:
     
@@ -328,4 +341,4 @@ class SpiceCorrelator:
         randomCl_padded=np.array(randomCl_padded) 
         
         return randomCl_padded
-        
+

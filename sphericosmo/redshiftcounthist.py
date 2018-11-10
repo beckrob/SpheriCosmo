@@ -1,3 +1,4 @@
+import copy
 
 class RedshiftCountHist:
     
@@ -5,3 +6,4 @@ class RedshiftCountHist:
         
         self.zBinEdges=copy.deepcopy(aZBinEdges)
         self.countInBin=copy.deepcopy(aCountInBin)
+

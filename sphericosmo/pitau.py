@@ -1,3 +1,9 @@
+import numpy as np
+from scipy.interpolate import interp1d
+from scipy import integrate
+from scipy.stats import norm
+from sphericosmo.cosmocontainer import *
+from sphericosmo.sphericalpower import *
 
 def SetupPiTau(piOption,zLimits,cosmoCont):
     
@@ -119,3 +125,4 @@ def SetupPiTauForBinnedSN(piOption,zLimitList,cosmoCont):
         raise ValueError('Invalid piOption value provided. Valid options: 1')
         
     return Pi_tau
+

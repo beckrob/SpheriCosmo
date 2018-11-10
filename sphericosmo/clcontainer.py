@@ -1,3 +1,7 @@
+import numpy as np
+import math
+import copy
+
 
 class ClContainer:
     
@@ -61,19 +65,19 @@ class ClContainer:
                 if self.isAutoCorr:
                     multipoleFactor=0.5
                 else:
-                    multipoleFactor=1.0            
+                    multipoleFactor=1.0
 
                 totalModeNum=self.fSky*multipoleFactor*np.sum(2*self.l[binSlice]+1)
 
-                self.deltaCl_band[i]=self.cl_band[i]/sqrt(totalModeNum)
+                self.deltaCl_band[i]=self.cl_band[i]/math.sqrt(totalModeNum)
 
             else:
                 #Computing the block average of the provided covariance matrix
 
                 modeWeightMatrix=np.outer(modeWeightVect,modeWeightVect)
 
-                self.deltaCl_band[i]=sqrt(np.sum(modeWeightMatrix*self.clCovar[binSlice,binSlice])
-                                         /modeWeightNorm**2)
+                self.deltaCl_band[i]=math.sqrt(np.sum(modeWeightMatrix*self.clCovar[binSlice,binSlice])
+                                               /modeWeightNorm**2)
 
         return
             
@@ -103,4 +107,4 @@ class ClContainer:
         else:
             
             return None
-     
+

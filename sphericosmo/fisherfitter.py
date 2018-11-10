@@ -1,3 +1,7 @@
+import numpy as np
+import math
+from sphericosmo.spicecorrelator import *
+from sphericosmo.clcontainer import *
 
 class FisherFitter:
     
@@ -90,7 +94,7 @@ class FisherFitter:
         
         A=np.dot(np.dot(ClVectMeas,sigmaInv),ClVectTheor)/Fisher
         
-        AErr=1.0/sqrt(Fisher)
+        AErr=1.0/math.sqrt(Fisher)
         
         return (A, AErr)
 
