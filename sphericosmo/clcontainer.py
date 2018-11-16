@@ -28,7 +28,7 @@ class ClContainer:
             self.deltaCl_band=None
             
         
-    def applyBinning(self, aLBands, aWeightBinByLs, aFSky=None):
+    def applyBinning(self, aLBands, aWeightBinByLs=False, aFSky=None):
         
         if aFSky is not None:
             

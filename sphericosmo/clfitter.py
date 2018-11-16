@@ -43,7 +43,7 @@ class ClFitter:
 
 
     def fitTemplateSubtractedCl(aClMeasured, aClMapTemplateList, aClTemplateTemplateList, aClTargetTemplateList,
-                                aReturnLambdas=False):
+                                aLBands, aWeightBinByLs=False, aReturnLambdas=False):
         
         def constantFunc(x,C):
 
@@ -51,6 +51,13 @@ class ClFitter:
 
         lambdaValues=[]
         lambdaErrors=[]
+        
+        for i in range(len(aClMapTemplateList)):
+        
+            aClMapTemplateList[i].applyBinning(aLBands, aWeightBinByLs)
+            aClTemplateTemplateList[i].applyBinning(aLBands, aWeightBinByLs)
+            aClTargetTemplateList[i].applyBinning(aLBands, aWeightBinByLs)
+            
         
         for i in range(len(aClMapTemplateList)):
 
@@ -72,7 +79,9 @@ class ClFitter:
             lambdaErrors.append(paramErrors[0])
         
         ClFiltered=copy.deepcopy(aClMeasured)
-
+        
+        ClFiltered.applyBinning(aLBands, aWeightBinByLs)
+        
         for i in range(len(aClMapTemplateList)):
 
             templateSignal=lambdaValues[i]*aClTargetTemplateList[i].cl_band

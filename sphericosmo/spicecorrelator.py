@@ -7,15 +7,83 @@ from astropy.table import Table
 from astropy.io import fits
 import os
 import os.path
+import sys
+from joblib import Parallel, delayed
+
 from sphericosmo.clcontainer import *
 from sphericosmo.mapcontainer import *
 from sphericosmo.redshiftcounthist import *
 
 
+def ispicePrintWrapper(*args, aPrintCall=False, **kwargs):
+
+    if aPrintCall:
+    
+        return ispice.ispice(*args, **kwargs)
+        
+    else:
+
+        stdoutSave=sys.stdout
+        sys.stdout=open(os.devnull, 'w')
+        
+        try:
+        
+            return ispice.ispice(*args, **kwargs)
+            
+        finally:
+        
+            sys.stdout.close()
+            sys.stdout=stdoutSave
+
+
 def defaultApodization(fSky, multiplier=1.0):
 
-    return math.sqrt(41252.96*fSky)*multiplier
+    return min(180.0, math.sqrt(41252.96*fSky)*multiplier)
 
+
+#This hack is needed so that the function can be serialized by joblib
+def _covarianceInnerLoop(spiceCorrelator, randomCl_padded, maxHealpixRes, randomMask, aRandomMapBeam, 
+                          aFixedMapList, aLBandListForFixedMap, aWeightBinByLs, clVectLength, clIndexesForMap, 
+                          i, aBaseLabel, aPrintPeriod, aPrintSpiceCall):
+
+    randomMapInstance=hp.sphtfunc.synfast(cls=randomCl_padded, nside=maxHealpixRes, new=True, verbose=False)
+    
+    randomMapCont=MapContainer(randomMapInstance, randomMask, aRandomMapBeam)
+    
+    clMatrixRow=np.empty(clVectLength)
+    
+    for j in range(len(aFixedMapList)):
+        
+        clRes=spiceCorrelator.computeCls(randomMapCont, aFixedMapList[j], aLabel=aBaseLabel+'_'+str(i),
+                                         aKeepInput=False, aKeepOutput=False, aGetCovar=False, aGetCor=False, aPrintSpiceCall=aPrintSpiceCall)
+        
+        clRes.applyBinning(aLBandListForFixedMap[j], aWeightBinByLs)
+        
+        clMatrixRow[clIndexesForMap[j]]=clRes.cl_band
+
+    if aPrintPeriod is not None:
+    
+        if i%aPrintPeriod==0:
+       
+            print('Finished sample '+str(i))
+            
+    return clMatrixRow
+    
+def _computeTemplateSubtractionInner(spiceCorrelator, aTracerMap, templateMap, aTargetMap, aBaseLabel, aPrintSpiceCall):
+
+    clTracerTemplate=spiceCorrelator.computeCls(aTracerMap, templateMap, aLabel=aBaseLabel, 
+                                                aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False, aPrintSpiceCall=aPrintSpiceCall)
+    
+    clTemplateTemplate=spiceCorrelator.computeCls(templateMap, None, aLabel=aBaseLabel, 
+                                                  aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False, aPrintSpiceCall=aPrintSpiceCall)
+
+    clTargetTemplate=spiceCorrelator.computeCls(aTargetMap, templateMap, aLabel=aBaseLabel, 
+                                                aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False, aPrintSpiceCall=aPrintSpiceCall)
+                                
+    return (clTracerTemplate, clTemplateTemplate, clTargetTemplate)
+    
+    
+    
 class SpiceCorrelator:
     
     def __init__(self, aOutdir, aMaxL, aApodizeFunction=defaultApodization, aThetaMaxFunction=defaultApodization,
@@ -33,7 +101,7 @@ class SpiceCorrelator:
         
         
     def computeCls(self, aMapCont1, aMapCont2=None, aLabel='', 
-                   aKeepInput=False, aKeepOutput=True, aGetCovar=True, aGetCor=False):
+                   aKeepInput=False, aKeepOutput=True, aGetCovar=True, aGetCor=False, aPrintSpiceCall=False):
         #The correlator does not store maps and masks in memory, just writes them to files
         #The label can be used to separate
         #If two maps are given, they are assumed to be different maps (i.e. cross-correlation)
@@ -75,48 +143,51 @@ class SpiceCorrelator:
                                   dtype=np.float64, fits_IDL=False, coord='C', overwrite=True)
             
         
-            ispice.ispice(mapin1=self.outDir+'/'+aLabel+'_map1.fit',
-                          clout=self.outDir+'/'+aLabel+'_Cl.fit',
-                          maskfile1=self.outDir+'/'+aLabel+'_mask1.fit',
-                          mapfile2=self.outDir+'/'+aLabel+'_map2.fit',
-                          maskfile2=self.outDir+'/'+aLabel+'_mask2.fit',
-                          covfileout=covOutputPath,
-                          apodizesigma=min(self.apodizeFunction(aMapCont1.fSky),self.apodizeFunction(aMapCont2.fSky)),
-                          thetamax=min(self.thetaMaxFunction(aMapCont1.fSky),self.thetaMaxFunction(aMapCont2.fSky)),
-                          beam1=aMapCont1.beam,
-                          beam2=aMapCont2.beam,
-                          corfile=corOutputPath,
-                          nlmax=self.maxL,
-                          subav=self.subAverage, 
-                          subdipole=self.subDipole)
+            ispicePrintWrapper(mapin1=self.outDir+'/'+aLabel+'_map1.fit',
+                               clout=self.outDir+'/'+aLabel+'_Cl.fit',
+                               maskfile1=self.outDir+'/'+aLabel+'_mask1.fit',
+                               mapfile2=self.outDir+'/'+aLabel+'_map2.fit',
+                               maskfile2=self.outDir+'/'+aLabel+'_mask2.fit',
+                               covfileout=covOutputPath,
+                               apodizesigma=min(self.apodizeFunction(aMapCont1.fSky),self.apodizeFunction(aMapCont2.fSky)),
+                               thetamax=min(self.thetaMaxFunction(aMapCont1.fSky),self.thetaMaxFunction(aMapCont2.fSky)),
+                               beam1=aMapCont1.beam,
+                               beam2=aMapCont2.beam,
+                               corfile=corOutputPath,
+                               nlmax=self.maxL,
+                               subav=self.subAverage, 
+                               subdipole=self.subDipole,
+                               aPrintCall=aPrintSpiceCall)
             
         else:
             
             autoCorr=True
             fSky=aMapCont1.fSky
             
-            ispice.ispice(mapin1=self.outDir+'/'+aLabel+'_map1.fit',
-                          clout=self.outDir+'/'+aLabel+'_Cl.fit',
-                          maskfile1=self.outDir+'/'+aLabel+'_mask1.fit',
-                          covfileout=covOutputPath,
-                          apodizesigma=self.apodizeFunction(aMapCont1.fSky),
-                          thetamax=self.thetaMaxFunction(aMapCont1.fSky),
-                          beam1=aMapCont1.beam,
-                          corfile=corOutputPath,
-                          nlmax=self.maxL,
-                          subav=self.subAverage, 
-                          subdipole=self.subDipole)
+            ispicePrintWrapper(mapin1=self.outDir+'/'+aLabel+'_map1.fit',
+                               clout=self.outDir+'/'+aLabel+'_Cl.fit',
+                               maskfile1=self.outDir+'/'+aLabel+'_mask1.fit',
+                               covfileout=covOutputPath,
+                               apodizesigma=self.apodizeFunction(aMapCont1.fSky),
+                               thetamax=self.thetaMaxFunction(aMapCont1.fSky),
+                               beam1=aMapCont1.beam,
+                               corfile=corOutputPath,
+                               nlmax=self.maxL,
+                               subav=self.subAverage, 
+                               subdipole=self.subDipole,
+                               aPrintCall=aPrintSpiceCall)
         
         
+        
+        clRes=SpiceCorrelator.readClOutput(self.outDir, aLabel, aKeepOutput, fSky, autoCorr, aGetCovar)
         
         SpiceCorrelator.fileCleanUp(self.outDir, aLabel, aKeepInput=aKeepInput, aKeepOutput=True)
-
-        
-        return SpiceCorrelator.readClOutput(self.outDir, aLabel, aKeepOutput, fSky, autoCorr, aGetCovar)
+      
+        return clRes
     
 
     def computeClsRandomMap(self, aMapCont1, aRandomMapClCont, aRandomMapMask, aRandomMapBeam='NO', aLabel='', 
-                            aKeepInput=False, aKeepOutput=True, aGetCovar=True, aGetCor=False):
+                            aKeepInput=False, aKeepOutput=True, aGetCovar=True, aGetCor=False, aPrintSpiceCall=False):
         #Assuming that the random map should have the same resolution as the fixed map
         
         randomCl_padded=SpiceCorrelator.getPaddedClForRandomMap(aRandomMapClCont)
@@ -126,13 +197,14 @@ class SpiceCorrelator:
         randomMapCont=MapContainer(randomMapInstance, aRandomMapMask, aRandomMapBeam)
     
         return self.computeCls(aMapCont1, randomMapCont, aLabel=aLabel, 
-                               aKeepInput=aKeepInput, aKeepOutput=aKeepOutput, aGetCovar=aGetCovar, aGetCor=aGetCor)
+                               aKeepInput=aKeepInput, aKeepOutput=aKeepOutput, aGetCovar=aGetCovar, aGetCor=aGetCor, aPrintSpiceCall=aPrintSpiceCall)
 
     
     
-    def covarianceMonteCarlo(self, aSampleNum, aRandomMapClCont, aRandomMapMask, 
+    def covarianceMonteCarlo(self, aSampleNum, aRandomMapClCont, aRandomMapMask,
                              aFixedMapList, aLBandListForFixedMap, 
-                             aWeightBinByLs=False, aRandomMapBeam='NO'):
+                             aWeightBinByLs=False, aRandomMapBeam='NO', aReturnClMatrix=False,
+                             aJobNum=1, aPrintPeriod=None, aPrintSpiceCall=False, aBaseLabel='MC'):
         
         
         randomCl_padded=SpiceCorrelator.getPaddedClForRandomMap(aRandomMapClCont)       
@@ -143,48 +215,108 @@ class SpiceCorrelator:
         
             maxHealpixRes=max(maxHealpixRes,fixedMap.healpixRes)
         
-
+        maskRes=int(round(math.sqrt(len(aRandomMapMask)/12)))
+        
+        if maskRes!=maxHealpixRes:
+        
+            randomMask=hp.ud_grade(aRandomMapMask,nside_out=maxHealpixRes)
+            
+            if maxHealpixRes<maskRes:
+                #The new resolution is smaller
+                #Have to move interpolated points to either 1 or 0 - arbitrary limit set at 0.98
+                randomMask[randomMask<=0.98]=0.0
+                randomMask[randomMask>0.98]=1.0
+                
+        else:
+        
+            randomMask=aRandomMapMask
+        
+        
         clMatrix=np.zeros([aSampleNum, SpiceCorrelator.getClVectLength(aLBandListForFixedMap)])
             
+        
         clIndexesForMap=SpiceCorrelator.getClVectIndexList(aLBandListForFixedMap)
-                          
-    
-        for i in range(aSampleNum):
+        
+        clVectLength=SpiceCorrelator.getClVectLength(aLBandListForFixedMap)
+        
+                 
+        if aJobNum>1:
+        #Parallel execution
+        
+            clMatrix=np.array(Parallel(n_jobs=aJobNum, 
+                                       backend='loky')(delayed(_covarianceInnerLoop)(self, randomCl_padded, maxHealpixRes, randomMask, aRandomMapBeam,
+                                                                                      aFixedMapList, aLBandListForFixedMap, aWeightBinByLs, clVectLength,
+                                                                                      clIndexesForMap, i, aBaseLabel, aPrintPeriod, aPrintSpiceCall) 
+                                                       for i in range(aSampleNum)))
+        
+        else:
+        #Serial version of the code
+        
+            clMatrix=np.zeros([aSampleNum, clVectLength])
+            
+            for i in range(aSampleNum):
 
-            randomMapInstance=hp.sphtfunc.synfast(cls=randomCl_padded, nside=maxHealpixRes, new=True, verbose=False)
-            
-            randomMapCont=MapContainer(randomMapInstance, aRandomMapMask, aRandomMapBeam)
-            
-            for j in range(len(aFixedMapList)):
+                randomMapInstance=hp.sphtfunc.synfast(cls=randomCl_padded, nside=maxHealpixRes, new=True, verbose=False)
                 
-                clRes=self.computeCls(randomMapCont, aFixedMapList[j], aLabel='MC', 
-                                      aKeepInput=False, aKeepOutput=False, aGetCovar=False, aGetCor=False)
+                randomMapCont=MapContainer(randomMapInstance, randomMask, aRandomMapBeam)
                 
-                clRes.applyBinning(aLBandListForFixedMap[j], aWeightBinByLs)
-                
-                clMatrix[i, clIndexesForMap[j]]=clRes.cl_band
+                for j in range(len(aFixedMapList)):
+                    
+                    clRes=self.computeCls(randomMapCont, aFixedMapList[j], aLabel=aBaseLabel,#_'+str(i),
+                                          aKeepInput=False, aKeepOutput=False, aGetCovar=False, aGetCor=False, aPrintSpiceCall=aPrintSpiceCall)
+                    
+                    clRes.applyBinning(aLBandListForFixedMap[j], aWeightBinByLs)
+                    
+                    clMatrix[i, clIndexesForMap[j]]=clRes.cl_band
 
-        return np.cov(clMatrix, rowvar=False)
-    
-    
-    def computeTemplateSubtractionCls(self, aTracerMap, aTargetMap, aTemplateMapList):
+                if aPrintPeriod is not None:
+                
+                    if i%aPrintPeriod==0:
+                   
+                        print('Finished sample '+str(i))
+                
+        if aReturnClMatrix:
         
-        clTracerTemplateList=[]
-        
-        clTemplateTemplateList=[]
-        
-        clTargetTemplateList=[]
-        
-        for templateMap in aTemplateMapList:
-        
-            clTracerTemplateList.append(self.computeCls(aTracerMap, templateMap, aLabel='template', 
-                                        aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False))
+            return clMatrix
             
-            clTemplateTemplateList.append(self.computeCls(templateMap, None, aLabel='template', 
-                                          aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False))
-      
-            clTargetTemplateList.append(self.computeCls(aTargetMap, templateMap, aLabel='template', 
-                                        aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False))
+        else:
+        
+            return np.cov(clMatrix, rowvar=False)
+    
+    
+    def computeTemplateSubtractionCls(self, aTracerMap, aTargetMap, aTemplateMapList, aJobNum=1, aPrintSpiceCall=False, aBaseLabel='template'):
+        
+        if aJobNum>1:
+        
+            clResults=np.array(Parallel(n_jobs=aJobNum, 
+                                        backend='loky')(delayed(_computeTemplateSubtractionInner)(self, aTracerMap, aTemplateMapList[i], aTargetMap, 
+                                                                                                  aBaseLabel+'_'+str(i), aPrintSpiceCall)
+                                                        for i in range(len(aTemplateMapList))), dtype=object)
+            
+            clTracerTemplateList=list(clResults[:,0])
+            
+            clTemplateTemplateList=list(clResults[:,1])
+            
+            clTargetTemplateList=list(clResults[:,2])
+            
+        else:
+        
+            clTracerTemplateList=[]
+            
+            clTemplateTemplateList=[]
+            
+            clTargetTemplateList=[]
+        
+            for templateMap in aTemplateMapList:
+            
+                clTracerTemplateList.append(self.computeCls(aTracerMap, templateMap, aLabel=aBaseLabel, 
+                                            aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False, aPrintSpiceCall=aPrintSpiceCall))
+                
+                clTemplateTemplateList.append(self.computeCls(templateMap, None, aLabel=aBaseLabel, 
+                                              aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False, aPrintSpiceCall=aPrintSpiceCall))
+          
+                clTargetTemplateList.append(self.computeCls(aTargetMap, templateMap, aLabel=aBaseLabel, 
+                                            aKeepInput=False, aKeepOutput=False, aGetCovar=True, aGetCor=False, aPrintSpiceCall=aPrintSpiceCall))
     
         return (clTracerTemplateList, clTemplateTemplateList, clTargetTemplateList)
         
@@ -195,7 +327,10 @@ class SpiceCorrelator:
 
         if aGetCovar:
             
-            covarMatrix=fits.open(aOutdir+'/'+aLabel+'_Covar.fit')[0].data[0]
+            with fits.open(aOutdir+'/'+aLabel+'_Covar.fit', memmap=False) as fitsFile:
+      
+                covarMatrix=fitsFile[0].data[0]
+
             
         else:
             
