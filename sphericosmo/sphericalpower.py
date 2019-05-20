@@ -140,7 +140,13 @@ def G_ISW_Limber_tau(l,cosmoCont):
 
 def G_Gal_Limber_tau(Pi,b,cosmoCont):
 
-    return b*Pi/GyrInSeconds*cosmoCont.D1
+    retVal=b*Pi/GyrInSeconds
+    
+    if cosmoCont.p_kInterpolator is None: 
+
+        retVal*=cosmoCont.D1
+    
+    return retVal
 
 
 def G_k_Limber_tau(cosmoCont):
@@ -156,8 +162,14 @@ def G_k_Limber_tau(cosmoCont):
 
     chiTerm=(chi_CMB_SI-chi_SI)/chi_CMB_SI*chi_SI
     
-    return ((3.0/2.0*(cosmoCont.H0_SI**2)/(speedOfLightSI)*cosmoCont.omega_m)*
-             cosmoCont.D1*(cosmoCont.zCurve+1.0)*chiTerm)
+    retVal=(3.0/2.0*(cosmoCont.H0_SI**2)/(speedOfLightSI)*cosmoCont.omega_m)*(cosmoCont.zCurve+1.0)*chiTerm
+    
+    if cosmoCont.p_kInterpolator is None: 
+
+        retVal*=cosmoCont.D1
+    
+    return retVal
+
 
 
 def C_lIntegrand_Limber(l,cosmoCont,G1,G2):
@@ -172,7 +184,16 @@ def C_lIntegrand_Limber(l,cosmoCont,G1,G2):
     
     P_k=np.empty(len(tauVect))
     
-    P_k[:-1]=cosmoCont.p_kFunc( (l+0.5)/((tau_0-tauVect[:-1])*speedOfLightMpcGyr) )
+    if cosmoCont.p_kInterpolator is not None:
+    
+        for i in range(len(tauVect)-1):
+    
+            P_k[i]=cosmoCont.p_kInterpolator.P(cosmoCont.zCurve[i], (l+0.5)/((tau_0-tauVect[i])*speedOfLightMpcGyr))*MpcInMeters**3
+    
+    else:
+    
+        P_k[:-1]=cosmoCont.p_kFunc( (l+0.5)/((tau_0-tauVect[:-1])*speedOfLightMpcGyr) )
+        
     P_k[-1]=0.0
     
     return G1*G2/(chi**2)/(MpcInMeters**2)*P_k/speedOfLightSI

@@ -82,15 +82,29 @@ class CosmoContainer:
             self.D1=np.concatenate([DExtension,self.D1])
             self.onePlusZD1_dtauVect=np.concatenate([DDerivExtension,self.onePlusZD1_dtauVect])
 
+            
+        #Normalize growth function at z=0
+        self.D1/=self.D1[-1]
+        
         
         self.kLimits = [np.amin(kVect.astype(np.float64)*h),np.amax(kVect.astype(np.float64)*h)]
 
         referenceIndex=np.argmin(abs(self.zCurve-referenceRedshift))
         
         self.p_kFunc = interp1d(kVect.astype(np.float64)*h, 
-                                p_kVect[0,:]*MpcInMeters**3*(self.D1[-1]/self.D1[referenceIndex])**2, 
+                                p_kVect[0,:]*MpcInMeters**3*self.D1[referenceIndex]**(-2.0), 
                                 kind='cubic', 
                                 fill_value='extrapolate')
+                                
+
+        self.p_kInterpolator=None
+                        
+    def setPkInterpolator(self, aCambParams, aIsNonLinear=True):
+        #If this is set, Limber integrals use P(z,k) instead of P(z=0,k)*D^2
+        self.p_kInterpolator=camb.get_matter_power_interpolator(aCambParams, kmax=1500.0, nonlinear=aIsNonLinear, hubble_units=False, k_hunit=False)
+        
+        return
+
 
     def createFromCambResults(scaleFactorVect, cambResults, smoothingSigma, 
                               isLinear=True, referenceRedshift=0.0, pointsToCMB=None):

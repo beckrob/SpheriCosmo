@@ -81,10 +81,12 @@ def SetupPiTauFromZHist(zBinLimits, countHist, cosmoCont):
     tauCurve=cosmoCont.taus
         
     zBinWidths=zBinLimits[1:]-zBinLimits[:-1]
-    zBinCenters=(zBinLimits[1:]+zBinLimits[:-1])/2.0
+    #zBinCenters=(zBinLimits[1:]+zBinLimits[:-1])/2.0
     
-    dN_dz = interp1d(zBinCenters, countHist/zBinWidths, kind='cubic', fill_value='extrapolate')
-        
+    #dN_dz = interp1d(zBinCenters, countHist/zBinWidths, kind='cubic', fill_value='extrapolate')
+    dN_dz = interp1d(zBinLimits, np.concatenate([countHist/zBinWidths,[0.0]]), kind='previous', 
+                     bounds_error=False, fill_value=0.0)
+    
     withinRange=getIndicesInRedshiftRange([zBinLimits[0],zBinLimits[-1]], cosmoCont)
 
     Pi_z=np.zeros(len(zCurve))
