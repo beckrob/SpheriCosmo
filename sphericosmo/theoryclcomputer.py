@@ -17,11 +17,14 @@ class TheoryClComputer:
         
         self.piOption=aPiOption
 
-    
-    def computeCls(self, aLValues, aCorrType=None, aZLimits=None, aZCountHist=None, aLimberSwitch=None, aKRes=None, aFSky=1.0):
-        #If the correlation is GX and there is a galaxy histogram, aZLimits will be ignored and taken instead from aGalHist
-        #If the correlation is GX and there is no galaxy histogram, assume uniform density within aZLimits
+
+    def computeCls(self, aLValues, aCorrType=None, aZLimits=None, aZCountHist=None, aLimberSwitch=None, aSNumberSlope=None, aKRes=None, aFSky=1.0):
+        #If the correlation is GX or mX and there is a galaxy histogram, aZLimits will be ignored and taken instead from aGalHist
+        #If the correlation is GX or mX and there is no galaxy histogram, assume uniform density within aZLimits
         
+        #aSNumberSlope is required for magnification bias computation
+        # s = dlog_10( N(<m) ) / dm, Eq. 5. of https://arxiv.org/pdf/0706.1071.pdf
+    
         if aLimberSwitch is None:
             
             aLimberSwitch=self.limberSwitch
@@ -33,7 +36,7 @@ class TheoryClComputer:
         Pi_tau=None
         b_tau=None
         
-        if 'G' in aCorrType:
+        if 'G' in aCorrType or 'm' in aCorrType:
             
             if aZCountHist is not None:
         
@@ -63,6 +66,7 @@ class TheoryClComputer:
                             corrType=aCorrType,
                             Pi=Pi_tau,
                             b=b_tau,
+                            sNumberSlope=aSNumberSlope,
                             returnAsTauFunction=False)
         
         

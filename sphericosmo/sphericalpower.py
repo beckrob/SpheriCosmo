@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import copy
 from scipy import integrate
 from scipy.special import spherical_jn
 from sphericosmo.cosmocontainer import *
@@ -55,7 +56,7 @@ def C_lIntegrand(k,cosmoCont,G1,G2):
     return (2.0/math.pi)*cosmoCont.p_kFunc(k)*(k**2)/(MpcInMeters**2)*G1*G2
 
 
-def C_l_Bessel(lVect, zLimits, kLimits, kRes, cosmoCont, corrType='TT', Pi=None, b=None, returnAsTauFunction=False):
+def C_l_Bessel(lVect, zLimits, kLimits, kRes, cosmoCont, corrType='TT', Pi=None, b=None, sNumberSlope=None, returnAsTauFunction=False):
 
     kVect=np.logspace(np.log10(kLimits[0]),np.log10(kLimits[1]),kRes,base=10)
 
@@ -109,7 +110,7 @@ def C_l_Bessel(lVect, zLimits, kLimits, kRes, cosmoCont, corrType='TT', Pi=None,
                 
             else:
 
-                raise ValueError('Invalid corrType value provided. Valid options: TT, GG, kk, GT, Gk and Tk')
+                raise ValueError('Invalid corrType value provided. Valid options for Bessel: TT, GG, kk, GT, Gk and Tk')
 
             if returnAsTauFunction:
                 G1=G1_tau           
@@ -147,6 +148,45 @@ def G_Gal_Limber_tau(Pi,b,cosmoCont):
         retVal*=cosmoCont.D1
     
     return retVal
+    
+
+    
+def G_mu_Limber_tau(Pi,sNumberSlope,cosmoCont):
+    
+    tauVect=cosmoCont.taus
+    tau_0=tauVect[-1]
+    
+    chi_SI=(tau_0-tauVect)*speedOfLightMpcGyr*MpcInMeters
+    
+    
+    retConst=(3.0/2.0*(cosmoCont.H0_SI**2)/(speedOfLightSI)*cosmoCont.omega_m)*(5.0*sNumberSlope-2.0)
+    
+    #Must zero z=0 components to prevent division by zero
+    chi_SI_tame=copy.deepcopy(chi_SI)
+    chi_SI_tame[-1]=1.0
+
+    #Also need to zero z=0 matter component, to knock out the artificial chi value
+    Pi_tame=copy.deepcopy(Pi)
+    Pi_tame[-1]=0.0
+
+    g_z_SI=np.empty(len(tauVect))
+
+    for i in range(len(tauVect)):
+        
+        integrand=(chi_SI-chi_SI[i])/chi_SI_tame*Pi_tame/GyrInSeconds
+    
+        g_z_SI[i]=chi_SI[i]*integrate.trapz(integrand[0:(i+1)], tauVect[0:(i+1)]*GyrInSeconds)
+    
+    retVal=retConst*(cosmoCont.zCurve+1.0)*g_z_SI #/(cosmoCont.H*1000.0/MpcInMeters) 1/H(z) knocked out by switch to d\tau 
+    
+    if cosmoCont.p_kInterpolator is None: 
+
+        retVal*=cosmoCont.D1
+    
+    return retVal
+    
+
+    
 
 
 def G_k_Limber_tau(cosmoCont):
@@ -199,7 +239,7 @@ def C_lIntegrand_Limber(l,cosmoCont,G1,G2):
     return G1*G2/(chi**2)/(MpcInMeters**2)*P_k/speedOfLightSI
 
 
-def C_l_Limber(lVect, zLimits, cosmoCont, corrType='TT', Pi=None, b=None, returnAsTauFunction=False):
+def C_l_Limber(lVect, zLimits, cosmoCont, corrType='TT', Pi=None, b=None, sNumberSlope=None, returnAsTauFunction=False):
 
     withinRange=getIndicesInRedshiftRange(zLimits, cosmoCont)
     
@@ -243,9 +283,21 @@ def C_l_Limber(lVect, zLimits, cosmoCont, corrType='TT', Pi=None, b=None, return
 
             G1_tau=G_ISW_Limber_tau(l,cosmoCont)
             
+        elif corrType=='mm':
+
+            G2_tau=G_mu_Limber_tau(Pi,sNumberSlope,cosmoCont)
+
+            G1_tau=G2_tau
+            
+        elif corrType=='Gm':
+
+            G2_tau=G_mu_Limber_tau(Pi,sNumberSlope,cosmoCont)
+
+            G1_tau=G_Gal_Limber_tau(Pi,b,cosmoCont)
+            
         else:
 
-            raise ValueError('Invalid corrType value provided. Valid options: TT, GG, kk, GT, Gk and Tk')
+            raise ValueError('Invalid corrType value provided. Valid options for Limber: TT, GG, kk, mm, GT, Gk, Gm and Tk')
 
         
         C_l_tau=C_lIntegrand_Limber(l,cosmoCont,G1_tau,G2_tau)[withinRange]
@@ -259,7 +311,7 @@ def C_l_Limber(lVect, zLimits, cosmoCont, corrType='TT', Pi=None, b=None, return
 
 
 def C_l_Switched(lLimitForLimber,lVect, zLimits, kLimits, kRes, cosmoCont, corrType='TT', 
-                 Pi=None, b=None, returnAsTauFunction=False):
+                 Pi=None, b=None, sNumberSlope=None, returnAsTauFunction=False):
     
     lVect_Bessel=[]
     lVect_Limber=[]
@@ -275,12 +327,12 @@ def C_l_Switched(lLimitForLimber,lVect, zLimits, kLimits, kRes, cosmoCont, corrT
     
     if len(lVect_Bessel)>0:
         
-        C_l=C_l_Bessel(lVect_Bessel, zLimits, kLimits, kRes, cosmoCont, corrType, Pi, b, returnAsTauFunction)
+        C_l=C_l_Bessel(lVect_Bessel, zLimits, kLimits, kRes, cosmoCont, corrType, Pi, b, sNumberSlope, returnAsTauFunction)
     
      
     if len(lVect_Limber)>0:
     
-        C_l_2=C_l_Limber(lVect_Limber, zLimits, cosmoCont, corrType, Pi, b, returnAsTauFunction)
+        C_l_2=C_l_Limber(lVect_Limber, zLimits, cosmoCont, corrType, Pi, b, sNumberSlope, returnAsTauFunction)
     
         if C_l is None:
             

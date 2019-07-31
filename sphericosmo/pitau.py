@@ -58,8 +58,8 @@ def SetupPiTau(piOption,zLimits,cosmoCont):
         
         ###Option 4
         #Here we use a Gaussian dN/dz
-        mu=(zLimits[1]-zLimits[0])/2.0
-        sigma=mu/3.0
+        mu=(zLimits[1]+zLimits[0])/2.0
+        sigma=(zLimits[1]-zLimits[0])/2.0/3.0
 
         Pi_z=np.zeros(len(zCurve))
         Pi_z[withinRange]=norm.pdf(zCurve[withinRange], loc=mu, scale=sigma)
