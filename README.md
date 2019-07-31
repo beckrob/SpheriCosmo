@@ -1,3 +1,5 @@
 # SpheriCosmo
 
-This is a bookkeeping release, the package is not yet intended for public use.
+Package for handling spherical power spectrum computations.
+
+Documentation to be written.
